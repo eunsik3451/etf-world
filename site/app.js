@@ -73,10 +73,10 @@
     const dot = live.mode === "live" ? "live" : live.mode === "official" ? "official" : "";
     return `<span class="status"><span class="dot ${dot}"></span>${esc(live.label)} · ${hhmm(live.updated)}</span>`;
   }
-  function etfRow(e, { idx, meta, side } = {}) {
+  function etfRow(e, { idx, meta, side, plain } = {}) {
     return `<a class="row" href="#/etf/${e.c}">
       ${idx != null ? `<span class="rank">${idx}</span>` : ""}
-      ${avatar(e.n)}
+      ${plain ? "" : avatar(e.n)}
       <div class="row-main"><div class="row-name">${esc(e.n)}</div><div class="row-meta">${meta ?? ""}</div></div>
       <div class="row-side">${side}</div></a>`;
   }
@@ -147,65 +147,109 @@
   }
 
   // ── 홈 ────────────────────────────────────────────────
-  async function home() {
-    const [{ live, U }, b] = await Promise.all([base(), getBrief()]);
-    const r = live.rank;
-    const hot = (state.homeHot === "up" ? r.up : r.down).slice(0, 5);
-    const favList = favs().filter(c => U[c]);
-    const idx = live.indices.map(i => `<div class="chip-idx"><div class="n">${esc(i.n)}</div>
-      <div class="v">${fmt(i.v, 2)}</div><div class="c ${cls(i.c)}">${pct(i.c)}</div></div>`).join("");
+  const RANK_TABS = [
+    ["gainers", "상승"], ["losers", "하락"], ["amount", "거래대금"], ["surge", "거래량 급증"], ["up", "내일 HOT ↑"], ["down", "내일 HOT ↓"],
+  ];
+  function rankRows(live, key) {
+    const list = (live.rank[key] || []).slice(0, 5);
+    if (!list.length) return `<div class="empty">${key === "up" || key === "down" ? "아직 추정 순위가 없어요.<br>미국 프리마켓(17:00)부터 계산해요." : "데이터가 없어요."}</div>`;
+    return list.map((e, i) => {
+      let meta, side;
+      if (key === "up" || key === "down") { meta = contribText(e.top); side = badgeSide(e.ex); }
+      else if (key === "surge") { meta = `평소의 <b>${e.sr}배</b> · 거래대금 ${amEok(e.am)}`; side = badgeSide(e.ch); }
+      else if (key === "amount") { meta = `거래대금 <b>${amEok(e.am)}</b> · ${fmt(e.p)}원`; side = badgeSide(e.ch); }
+      else { meta = `${fmt(e.p)}원 · 거래대금 ${amEok(e.am)}`; side = badgeSide(e.ch); }
+      return etfRow(e, { idx: i + 1, meta, side, plain: true });
+    }).join("");
+  }
+  function rankNote(live, key) {
+    if (key === "up" || key === "down") return hotExplain(live) + " 종가 대비 예상 등락이에요.";
+    if (key === "surge") return "최근 20일 평균 거래량 대비 오늘 거래량이에요. 금리형 제외.";
+    if (key === "amount") return "금리·채권형 파킹 ETF는 제외했어요.";
+    return "레버리지·인버스와 소형 ETF(시총 100억 미만)는 제외했어요.";
+  }
+  function heatBg(v) {
+    if (v == null || Math.abs(v) < 0.05) return "var(--fill)";
+    const k = Math.min(Math.abs(v) / 4, 1);          // ±4%에서 최대 농도
+    return `color-mix(in srgb, var(--${v > 0 ? "up" : "down"}) ${Math.round(10 + k * 45)}%, var(--card))`;
+  }
 
+  async function home() {
+    const [{ live, U }, b, bIdx] = await Promise.all([base(), getBrief(), getBriefIndex()]);
+    const r = live.rank;
+    if (!state.rankTab) state.rankTab = live.mode === "live" ? "up" : "gainers";
+    const today = (live.updated || "").slice(0, 10);
+
+    // 시장 폭: 금리·채권형 제외
+    let upN = 0, dnN = 0, flN = 0;
+    for (const [c, e] of Object.entries(live.etfs)) {
+      const u = U[c];
+      if (!u || u.tab === 6 || u.tags.includes("채권") || e.ch == null) continue;
+      if (e.ch > 0.05) upN++; else if (e.ch < -0.05) dnN++; else flN++;
+    }
+    const tot = upN + dnN + flN || 1;
+    const upP = upN / tot * 100, dnP = dnN / tot * 100;
+    const briefToday = b && (b.generatedAt || "").slice(0, 10) === today;
+    const headline = briefToday ? b.market.headline
+      : dnP > 60 ? `ETF ${fmt(tot)}개 중 ${Math.round(dnP)}%가 내리고 있어요`
+      : upP > 60 ? `ETF ${fmt(tot)}개 중 ${Math.round(upP)}%가 오르고 있어요`
+      : "오르는 ETF와 내리는 ETF가 엇갈리고 있어요";
+    const themes = r.themes.filter(t => t.t !== "채권").slice(0, 9);
+
+    const ticker = live.indices.map(i => `<div class="tk"><span class="n">${esc(i.n)}</span>
+      <span class="v">${fmt(i.v, i.fx ? 1 : 2)}</span><span class="c ${cls(i.c)}">${pct(i.c)}</span></div>`).join("");
+
+    const favList = favs().filter(c => U[c]);
     const myCard = favList.length ? `<section class="card">
       <div class="card-head"><div class="card-title">내 ETF</div><a class="more" href="#/my">계좌 보기</a></div>
       <div class="list">${favList.slice(0, 5).map(c => {
-        const e = live.etfs[c] || {}; const u = U[c];
-        const ex = e.ex;
+        const e = live.etfs[c] || {}, u = U[c];
         return etfRow({ c, n: u.n }, {
-          meta: ex != null ? `추정 <span class="${cls(ex)}">${pct(ex)}</span> · 종가 대비` : `${fmt(e.p)}원`,
-          side: ex != null ? badgeSide(ex) : priceSide(e.p, e.ch),
+          plain: true,
+          meta: e.ex != null ? `추정 iNAV · 종가 대비` : `${fmt(e.p)}원`,
+          side: badgeSide(e.ex != null ? e.ex : e.ch),
         });
       }).join("")}</div></section>` : "";
 
-    const hotCard = `      <section class="card">
-        <div class="card-head">
-          <div><div class="card-title">내일의 HOT ETF</div><div class="card-sub">추정 iNAV 기준 · 종가 대비 예상 등락</div></div>
-          ${seg("homeHot", [["up", "상승"], ["down", "하락"]], state.homeHot)}
-        </div>
-        <div class="list">${hot.length ? hot.map((e, i) => etfRow(e, { idx: i + 1, meta: contribText(e.top), side: badgeSide(e.ex) })).join("")
-          : `<div class="empty">아직 추정 순위가 없어요.<br>미국 프리마켓(17:00)부터 계산을 시작해요.</div>`}</div>
-        <p class="note">${hotExplain(live)}</p>
-        <div style="margin-top:10px"><a class="more" href="#/hot">전체 순위 보기</a></div>
-      </section>
-`;
-    const todayCard = `      <section class="card">
-        <div class="card-head"><div><div class="card-title">오늘의 등락</div><div class="card-sub">레버리지·인버스 제외 · ${hhmm(live.updated)} 기준</div></div>
-          ${seg("today", [["gainers", "상승"], ["losers", "하락"]], state.today)}</div>
-        <div class="list">${(r[state.today] || []).slice(0, 5).map((e, i) => etfRow(e, { idx: i + 1, meta: `거래대금 ${amEok(e.am)}`, side: badgeSide(e.ch) })).join("")}</div>
-      </section>
-`;
+    const latestId = bIdx[0]?.id || "latest";
+    const todayBriefs = bIdx.filter(x => x.date === (b?.generatedAt || "").slice(0, 10));
+    const briefCardC = b ? `<section class="card">
+      <div class="card-head"><div><div class="card-title">브리핑</div><div class="card-sub">${briefMeta(b)}</div></div>
+        <a class="more" href="#/brief">전체</a></div>
+      ${todayBriefs.length > 1 ? `<div class="chips mini">${todayBriefs.slice().reverse().map(x =>
+        `<button class="chip ${x.id === latestId ? "on" : ""}" data-go="#/brief?id=${x.id}">${esc(x.session)}</button>`).join("")}</div>` : ""}
+      <div class="blist">${b.items.map(it => `<a class="bline" href="#/brief?id=${latestId}">
+        <span class="bdot ${toneCls(it.tone)}"></span><span class="bt">${esc(it.title)}</span>
+        <span class="bs">${esc(it.summary)}</span></a>`).join("")}</div>
+    </section>` : "";
+
     $app.innerHTML = `
-      <div class="hero">
-        <h1>내 ETF, 지금 얼마일까?</h1>
-        <p>장 마감 후에도 해외 시세와 환율로 ETF 가치를 추정해요.</p>
-        <div style="margin-top:14px">${statusPill(live)}</div>
-      </div>
-      <div class="strip">${idx}</div>
-      ${briefCard(b, U)}
+      <div class="topline">${statusPill(live)}</div>
+      <div class="ticker">${ticker}</div>
+
+      <section class="card market">
+        <div class="card-sub">지금 시장</div>
+        <h2 class="mk-head">${esc(headline)}</h2>
+        <div class="breadth" role="img" aria-label="상승 ${upN}개, 보합 ${flN}개, 하락 ${dnN}개">
+          <span class="bu" style="width:${upP}%"></span><span class="bf" style="width:${100 - upP - dnP}%"></span><span class="bd" style="width:${dnP}%"></span>
+        </div>
+        <div class="breadth-lbl"><span>상승 <b class="up">${fmt(upN)}</b></span><span>보합 ${fmt(flN)}</span><span>하락 <b class="down">${fmt(dnN)}</b></span></div>
+        <div class="heat">${themes.map(t => `<a class="hc" href="#/find?tag=${encodeURIComponent(t.t)}" style="background:${heatBg(t.avg)}" title="${esc(t.t)} ${t.n}개 · 거래대금 ${amEok(t.am)}">
+          <span class="ht">${esc(t.t)}</span><span class="hv">${pct(t.avg, 1)}</span></a>`).join("")}</div>
+        <div class="card-sub" style="margin-top:10px">테마별 평균 등락률 · 색이 진할수록 많이 움직였어요</div>
+      </section>
+
+      <section class="card">
+        <div class="card-head" style="margin-bottom:10px"><div class="card-title">순위</div>
+          <a class="more" id="rankMore" href="${state.rankTab === "up" || state.rankTab === "down" ? "#/hot" : "#/find"}">더 보기</a></div>
+        <div class="chips mini" role="tablist">${RANK_TABS.map(([k, l]) =>
+          `<button class="chip ${k === state.rankTab ? "on" : ""}" data-rank="${k}">${l}</button>`).join("")}</div>
+        <div class="list" id="rankList">${rankRows(live, state.rankTab)}</div>
+        <p class="note" id="rankNote">${rankNote(live, state.rankTab)}</p>
+      </section>
+
+      ${briefCardC}
       ${myCard}
-${live.mode === "official" ? todayCard + hotCard : hotCard + todayCard}
-      <section class="card">
-        <div class="card-head"><div><div class="card-title">거래대금 TOP</div><div class="card-sub">오늘 가장 많이 거래된 ETF · 금리형 제외</div></div></div>
-        <div class="list">${r.amount.slice(0, 5).map((e, i) => etfRow(e, { idx: i + 1, meta: `거래대금 ${amEok(e.am)}`, side: priceSide(e.p, e.ch) })).join("")}</div>
-      </section>
-      <section class="card">
-        <div class="card-head"><div><div class="card-title">거래량 급증</div><div class="card-sub">최근 20일 평균 대비</div></div></div>
-        <div class="list">${r.surge.slice(0, 5).map((e, i) => etfRow(e, { idx: i + 1, meta: `평소의 <b>${e.sr}배</b> · ${amEok(e.am)}`, side: priceSide(e.p, e.ch) })).join("")}</div>
-      </section>
-      <section class="card">
-        <div class="card-head"><div><div class="card-title">테마별 흐름</div><div class="card-sub">거래대금이 많은 순 · 평균 등락률</div></div></div>
-        <div class="tiles">${r.themes.slice(0, 8).map(t => `<a class="tile" href="#/find?tag=${encodeURIComponent(t.t)}">
-          <div class="t">${esc(t.t)}</div><div class="s">${t.n}개 · ${amEok(t.am)}</div><div class="c ${cls(t.avg)}">${pct(t.avg)}</div></a>`).join("")}</div>
-      </section>
       ${footer(live)}`;
   }
 
@@ -548,7 +592,7 @@ ${live.mode === "official" ? todayCard + hotCard : hotCard + todayCard}
   });
 
   document.addEventListener("click", ev => {
-    const t = ev.target.closest("[data-seg],[data-act],[data-tag],[data-go]");
+    const t = ev.target.closest("[data-seg],[data-act],[data-tag],[data-go],[data-rank]");
     if (!t) return;
     if (t.dataset.go) { location.hash = t.dataset.go; return; }
     if (t.dataset.seg) {
@@ -561,6 +605,16 @@ ${live.mode === "official" ? todayCard + hotCard : hotCard + todayCard}
       }
       state[t.dataset.seg] = t.dataset.v;
       render();
+      return;
+    }
+    if (t.dataset.rank) {
+      state.rankTab = t.dataset.rank;
+      t.parentElement.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === t));
+      base().then(({ live }) => {
+        document.getElementById("rankList").innerHTML = rankRows(live, state.rankTab);
+        document.getElementById("rankNote").innerHTML = rankNote(live, state.rankTab);
+        document.getElementById("rankMore").setAttribute("href", state.rankTab === "up" || state.rankTab === "down" ? "#/hot" : "#/find");
+      });
       return;
     }
     if (t.dataset.tag) {
