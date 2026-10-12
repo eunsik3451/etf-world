@@ -4,7 +4,7 @@
 
   const $app = document.getElementById("app");
   const cache = {};
-  const state = { hotDir: "up", homeHot: "up", today: "gainers", find: { q: "", tag: "전체", sort: "am", limit: 40 }, chartRange: "3M", holdAll: false };
+  const state = { hotDir: "up", homeHot: "up", today: "gainers", trendKey: "w1", find: { q: "", tag: "전체", sort: "am", limit: 40 }, chartRange: "3M", holdAll: false };
 
   // ── 데이터 ─────────────────────────────────────────────
   async function getJSON(path, { fresh = false } = {}) {
@@ -25,6 +25,7 @@
     .then(r => r.ok ? r.json() : null).catch(() => null));
   const getBrief = () => getBriefFile("latest");
   const getBriefIndex = () => getBriefFile("index").then(x => x?.briefs || []);
+  const getTrends = () => getBriefFile("trends");
 
   setInterval(async () => {                       // 2분마다 최신 live.json 확인
     try {
@@ -142,8 +143,45 @@
         <ul class="bpoints">${b.market.points.map(p => `<li>${esc(p)}</li>`).join("")}</ul></section>
       <section class="card"><div class="card-title" style="margin-bottom:6px">많이 움직인 ETF</div>
         ${b.items.map(it => briefItem(it, U, { open: true })).join("")}</section>
+      ${await (async () => { const tr = await getTrends(); return tr ? `<section class="card"><div class="card-title" style="margin-bottom:2px">요즘 트렌드</div>
+        <div class="card-sub" style="margin-bottom:6px">${esc(tr.note || "")}</div>
+        ${tr.items.map(it => briefItem({ ...it, title: `${it.title} · ${it.period}` }, U, { open: false })).join("")}</section>` : ""; })()}
       <p class="foot">거래대금·등락률·거래량 급증 상위 ETF를 골라 Claude가 관련 뉴스를 읽고 정리했어요. 원인 해석은 틀릴 수 있으니 출처 기사를 함께 확인하세요. '(추정)'은 기사로 확인되지 않은 해석이에요.</p>
       ${footer(live)}`;
+  }
+
+  // ── 요즘 트렌드 ───────────────────────────────────────
+  function trendWhy(tr, key) {
+    const want = key === "w1" ? "1주" : "1개월";
+    const map = {};
+    for (const it of tr?.items || []) if (it.period.includes(want)) for (const c of it.codes) map[c] = it;
+    return map;
+  }
+  function trendBody(live, tr, key) {
+    const t = live.rank.trend?.[key];
+    if (!t) return `<div class="empty">추세 데이터가 아직 없어요.</div>`;
+    const why = trendWhy(tr, key);
+    const th = t.themes.slice(0, 8);
+    const shown = new Set();                       // 같은 테마 이유는 처음 한 번만
+    const row = (e, i) => {
+      let w = why[e.c];
+      if (w && shown.has(w.title)) w = null; else if (w) shown.add(w.title);
+      return `<a class="row" href="#/etf/${e.c}"><span class="rank">${i + 1}</span>
+        <div class="row-main"><div class="row-name">${esc(e.n)}</div>
+          <div class="row-meta">${esc(e.top.slice(0, 3).join(" · "))}</div>
+          ${w ? `<div class="why-news"><span>${esc(w.title)}</span>${esc(w.summary)}</div>` : ""}</div>
+        <div class="row-side">${badgeSide(e.r)}</div></a>`;
+    };
+    const stories = (tr?.items || []).filter(it => it.period.includes(key === "w1" ? "1주" : "1개월"));
+    return `
+      <div class="tthemes">${th.map(x => `<a class="tchip" href="#/find?tag=${encodeURIComponent(x.t)}" style="background:${heatBg(x.avg / (key === "w1" ? 2 : 4))}">
+        <span>${esc(x.t)}</span><b>${pct(x.avg, 1)}</b></a>`).join("")}</div>
+      <div class="tsub up">많이 오른 ETF</div>
+      <div class="list">${t.up.slice(0, 5).map(row).join("")}</div>
+      <div class="tsub down">많이 내린 ETF</div>
+      <div class="list">${t.down.slice(0, 5).map(row).join("")}</div>
+      ${stories.length ? `<details class="tstories"><summary>왜 이런 흐름일까? · ${stories.length}개 테마</summary>
+        ${stories.map(it => briefItem({ ...it, title: `${it.title} · ${it.period}` }, universeMap, { open: false })).join("")}</details>` : ""}`;
   }
 
   // ── 홈 ────────────────────────────────────────────────
@@ -178,7 +216,8 @@
   }
 
   async function home() {
-    const [{ live, U }, b, bIdx] = await Promise.all([base(), getBrief(), getBriefIndex()]);
+    const [{ live, U }, b, bIdx, tr] = await Promise.all([base(), getBrief(), getBriefIndex(), getTrends()]);
+    state.trends = tr;
     const r = live.rank;
     if (!state.rankTab) state.rankTab = live.mode === "live" ? "up" : "gainers";
     const today = (live.updated || "").slice(0, 10);
@@ -242,7 +281,7 @@
         <div class="breadth-lbl"><span>상승 <b class="up">${fmt(upN)}</b></span><span>보합 ${fmt(flN)}</span><span>하락 <b class="down">${fmt(dnN)}</b></span></div>
         <div class="heat">${themes.map(t => `<a class="hc" href="#/find?tag=${encodeURIComponent(t.t)}" style="background:${heatBg(t.avg)}" title="${esc(t.t)} ${t.n}개 · 거래대금 ${amEok(t.am)}">
           <span class="ht">${esc(t.t)}</span><span class="hv">${pct(t.avg, 1)}</span></a>`).join("")}</div>
-        <div class="card-sub" style="margin-top:10px">테마별 평균 등락률 · 색이 진할수록 많이 움직였어요</div>
+        <div class="card-sub" style="margin-top:10px">테마별 시가총액 가중 평균 · 많이 움직인 테마 순 · 색이 진할수록 큰 변동</div>
       </section>
 
       <section class="card">
@@ -252,6 +291,13 @@
           `<button class="chip ${k === state.rankTab ? "on" : ""}" data-rank="${k}">${l}</button>`).join("")}</div>
         <div class="list" id="rankList">${rankRows(live, state.rankTab, why)}</div>
         <p class="note" id="rankNote">${rankNote(live, state.rankTab)}</p>
+      </section>
+
+      <section class="card">
+        <div class="card-head" style="margin-bottom:12px"><div><div class="card-title">요즘 트렌드</div>
+          <div class="card-sub">${live.rank.trend?.asOf ? fmtDate(live.rank.trend.asOf) + " 종가 기준 · " : ""}시총 300억 이상 · 레버리지·인버스 제외</div></div>
+          ${seg("trendKey", [["w1", "1주"], ["m1", "1개월"]], state.trendKey)}</div>
+        <div id="trendBody">${trendBody(live, tr, state.trendKey)}</div>
       </section>
 
       ${briefCardC}
@@ -602,6 +648,12 @@
     if (!t) return;
     if (t.dataset.go) { location.hash = t.dataset.go; return; }
     if (t.dataset.seg) {
+      if (t.dataset.seg === "trendKey") {
+        state.trendKey = t.dataset.v;
+        t.parentElement.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === t));
+        base().then(({ live }) => { document.getElementById("trendBody").innerHTML = trendBody(live, state.trends, state.trendKey); });
+        return;
+      }
       if (t.dataset.seg === "range") {
         state.chartRange = t.dataset.v;
         t.parentElement.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === t));

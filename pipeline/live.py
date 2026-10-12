@@ -249,22 +249,53 @@ def main():
         if contrib:
             drivers[c] = [[n, round(r, 1)] for n, w, r in contrib[:3]]
 
-    themes = {}
-    for c, e in etfs.items():
-        for t in (universe.get(c) or {}).get("tags", []):
-            if t in ("레버리지", "인버스", "액티브"):
+    # ── 테마: 레버리지·인버스 제외, 시가총액 가중 평균. 많이 움직인 순 ──
+    def theme_stats(value_of):
+        acc = {}
+        for c, e in etfs.items():
+            u = universe.get(c) or {}
+            if {"lev", "inv"} & set(u.get("f", [])):
                 continue
-            th = themes.setdefault(t, {"t": t, "n": 0, "chs": 0.0, "am": 0, "etfs": []})
-            th["n"] += 1
-            th["chs"] += e["ch"]
-            th["am"] += e["am"]
-            th["etfs"].append(c)
-    theme_list = []
-    for th in themes.values():
-        top = sorted(th["etfs"], key=lambda c: -etfs[c]["am"])[:4]
-        theme_list.append({"t": th["t"], "n": th["n"], "avg": round(th["chs"] / th["n"], 2),
-                           "am": th["am"], "etfs": [pack(c) for c in top]})
-    theme_list.sort(key=lambda x: -x["am"])
+            v = value_of(c, e, u)
+            if v is None or not e["mc"]:
+                continue
+            for t in u.get("tags", []):
+                if t in ("레버리지", "인버스", "액티브"):
+                    continue
+                th = acc.setdefault(t, {"t": t, "n": 0, "wv": 0.0, "w": 0.0, "am": 0, "etfs": []})
+                th["n"] += 1
+                th["wv"] += v * e["mc"]
+                th["w"] += e["mc"]
+                th["am"] += e["am"]
+                th["etfs"].append(c)
+        out = []
+        for th in acc.values():
+            if th["n"] < 3 or not th["w"]:
+                continue
+            top = sorted(th["etfs"], key=lambda c: -etfs[c]["mc"])[:4]
+            out.append({"t": th["t"], "n": th["n"], "avg": round(th["wv"] / th["w"], 2), "am": th["am"], "etfs": top})
+        out.sort(key=lambda x: -abs(x["avg"]))
+        return out
+
+    theme_list = theme_stats(lambda c, e, u: e["ch"])
+    for th in theme_list:
+        th["etfs"] = [pack(c) for c in th["etfs"]]
+
+    # ── 요즘 트렌드: 최근 1주(5거래일)·1개월(20거래일) 수익률 ──
+    trend = {}
+    big = [c for c in etfs if etfs[c]["mc"] >= 300 and not parking(c)
+           and not ({"lev", "inv", "synthetic", "futures"} & set((universe.get(c) or {}).get("f", [])))]
+    for key in ("w1", "m1"):
+        has = [c for c in big if (universe.get(c) or {}).get(key) is not None]
+        rows = lambda cs: [{"c": c, "n": universe[c]["n"], "r": universe[c][key], "p": etfs[c]["p"],
+                            "top": universe[c].get("top", [])[:3]} for c in cs]
+        trend[key] = {
+            "up": rows(sorted(has, key=lambda c: -universe[c][key])[:10]),
+            "down": rows(sorted(has, key=lambda c: universe[c][key])[:10]),
+            "themes": [{k: v for k, v in th.items() if k != "etfs"}
+                       for th in theme_stats(lambda c, e, u: u.get(key))][:12],
+        }
+    asof = next((u.get("asOf") for u in universe.values() if u.get("asOf")), None)
 
     # ── 지수 ──
     indices = []
@@ -307,6 +338,7 @@ def main():
             "losers": [pack(c) for c in losers],
             "surge": [pack(c, sr=round(r, 1)) for c, r in surge[:15]],
             "themes": theme_list[:12],
+            "trend": {**trend, "asOf": asof},
         },
     })
     save("quotes.json", {

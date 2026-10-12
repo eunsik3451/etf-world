@@ -19,6 +19,13 @@ API 키 없이 Claude Code 세션(또는 예약 실행)이 직접 뉴스를 찾�
    - `site/briefs/index.json`의 `briefs` 맨 앞에 `{id, date, session, generatedAt}` 추가 (같은 id가 있으면 교체)
 5. 커밋·푸시 → 다음 10분 주기 배포에 반영
 
+## 요즘 트렌드 (site/briefs/trends.json)
+장 마감 종합 회차에서 함께 갱신한다 (최소 주 1회).
+1. `site/data/live.json`의 `rank.trend.w1 / m1`(최근 1주·1개월 수익률 상·하위 ETF, 테마별 시총가중 평균)을 확인
+2. 상위·하위에 몰린 테마를 4~6개 이야기로 묶고, 각 이야기의 원인을 기사로 확인
+3. 형식: `{generatedAt, dataAsOf, note, items:[{codes, period:"1주"|"1개월"|"1주 · 1개월", title, tone, summary, points, sources}]}`
+   - `codes`에는 순위에 오른 ETF 코드를 모두 넣는다 (홈에서 해당 ETF 옆에 이유가 표시됨)
+
 ## 작성 원칙
 - 수치(등락률, 거래대금, 비중)는 우리 데이터 기준, 원인은 기사 기준. 둘을 섞지 않는다
 - 기사로 확인되지 않은 해석은 문장 끝에 `(추정)`

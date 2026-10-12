@@ -92,6 +92,8 @@ def main(limit=None):
     results = pmap(build_one, items, workers=8)
 
     universe, holdings_live, stocks = [], {}, {}
+    now = now_kst()
+    today_s, before_close = f"{now:%Y%m%d}", now.hour * 100 + now.minute < 1530
     for item, res in zip(items, results):
         code, name, tab = item["itemcode"], item["itemname"], item["etfTabCode"]
         tags, flags = classify(name, tab)
@@ -122,6 +124,14 @@ def main(limit=None):
         vols = [c[2] for c in chart[:-1][-20:]] if chart else []
         avg20 = sum(vols) / len(vols) if vols else None
 
+        # 최근 추세: 마지막 확정 종가 기준 5거래일(1주)·20거래일(1개월) 수익률
+        done = [c for c in chart if not (c[0] == today_s and before_close)]
+        def ret(n):
+            if len(done) > n and done[-1 - n][1]:
+                return round((done[-1][1] / done[-1 - n][1] - 1) * 100, 2)
+            return None
+        w1, m1 = ret(5), ret(20)
+
         us_w = sum(h["w"] for h in holds if h["r"] and h["t"] == "해외")
         kr_w = sum(h["w"] for h in holds if h["t"] in ("KOSPI", "KOSDAQ"))
 
@@ -142,6 +152,7 @@ def main(limit=None):
             "is": meta.get("issuer"), "fee": meta.get("fee"), "aum": meta.get("aum"),
             "div": meta.get("divYield"), "r1m": rets.get("M1"), "r3m": rets.get("M3"),
             "r1y": rets.get("Y1"), "avg20": round(avg20) if avg20 else None,
+            "w1": w1, "m1": m1, "asOf": done[-1][0] if done else None,
             "usW": round(us_w, 1), "krW": round(kr_w, 1), "nh": len(holds),
             "top": [h["n"] for h in holds if h["t"] != "현금"][:3],
         })

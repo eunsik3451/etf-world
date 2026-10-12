@@ -110,8 +110,8 @@ svg { display: block; }
 .chip-idx .c { font-size: 13px; font-weight: 600; }
 
 /* ── segmented ── */
-.seg { display: inline-flex; background: var(--fill); border-radius: 12px; padding: 3px; gap: 2px; }
-.seg button { padding: 6px 14px; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--text-3); transition: all .15s; }
+.seg { flex-shrink: 0; display: inline-flex; background: var(--fill); border-radius: 12px; padding: 3px; gap: 2px; }
+.seg button { white-space: nowrap; padding: 6px 14px; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--text-3); transition: all .15s; }
 .seg button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
 .seg.wide { display: flex; }
 .seg.wide button { flex: 1; }
@@ -274,6 +274,18 @@ details.how[open] summary::after { content: " ⌃"; }
 .why-news span { display: inline-block; font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 5px; padding: 1px 5px; margin-right: 6px; vertical-align: 1px; }
 #rankList .row { align-items: flex-start; }
 #rankList .rank { margin-top: 2px; }
+
+.tthemes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.tchip { display: inline-flex; gap: 6px; align-items: baseline; padding: 7px 11px; border-radius: 10px; font-size: 13px; color: var(--text); }
+.tchip b { font-weight: 700; }
+.tsub { font-size: 13px; font-weight: 700; margin: 14px 0 2px; }
+.tsub.up::before { content: "▲ "; color: var(--up); }
+.tsub.down::before { content: "▼ "; color: var(--down); }
+details.tstories { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+details.tstories > summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--accent); list-style: none; }
+details.tstories > summary::-webkit-details-marker { display: none; }
+#trendBody .row { align-items: flex-start; }
+#trendBody .rank { margin-top: 2px; }
 
 /* ── brief ── */
 .bheadline { font-size: 18px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.4; margin-bottom: 8px; }
