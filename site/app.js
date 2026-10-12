@@ -19,9 +19,12 @@
     if (!universeMap) universeMap = Object.fromEntries(uni.etfs.map(e => [e.c, e]));
     return { live, uni, U: universeMap };
   }
-  let briefP = null;
-  const getBrief = () => (briefP ||= fetch(`briefs/latest.json?t=${Math.floor(Date.now() / 600000)}`)
+  const briefCache = {};
+  const bust = () => Math.floor(Date.now() / 600000);
+  const getBriefFile = id => (briefCache[id] ||= fetch(`briefs/${id}.json?t=${bust()}`)
     .then(r => r.ok ? r.json() : null).catch(() => null));
+  const getBrief = () => getBriefFile("latest");
+  const getBriefIndex = () => getBriefFile("index").then(x => x?.briefs || []);
 
   setInterval(async () => {                       // 2분마다 최신 live.json 확인
     try {
@@ -119,11 +122,22 @@
       <div style="margin-top:10px"><a class="more" href="#/brief">브리핑 전체 보기</a></div>
     </section>`;
   }
-  async function brief() {
-    const [{ live, U }, b] = await Promise.all([base(), getBrief()]);
+  async function brief(params) {
+    const [{ live, U }, idx] = await Promise.all([base(), getBriefIndex()]);
+    const id = params.get("id") || idx[0]?.id || "latest";
+    const b = await getBriefFile(id);
     if (!b) { $app.innerHTML = `<div class="card" style="margin-top:20px"><div class="empty">아직 작성된 브리핑이 없어요.</div></div>`; return; }
+    const day = (idx.find(x => x.id === id) || idx[0] || {}).date;
+    const sameDay = idx.filter(x => x.date === day).slice().reverse();
+    const days = [...new Set(idx.map(x => x.date))].slice(0, 7);
+    const tabs = sameDay.length > 1 ? `<div class="seg" style="margin-top:14px">${sameDay.map(x =>
+      `<button class="${x.id === id ? "on" : ""}" data-go="#/brief?id=${x.id}">${esc(x.session)}</button>`).join("")}</div>` : "";
+    const past = days.length > 1 ? `<div class="chips" style="margin-top:12px">${days.map(d => {
+      const first = idx.find(x => x.date === d);
+      return `<button class="chip ${d === day ? "on" : ""}" data-go="#/brief?id=${first.id}">${d.slice(5).replace("-", "/")}</button>`;
+    }).join("")}</div>` : "";
     $app.innerHTML = `
-      <div class="hero"><h1>${esc(b.market.headline)}</h1><p>${briefMeta(b)}</p></div>
+      <div class="hero"><h1>${esc(b.market.headline)}</h1><p>${briefMeta(b)}</p>${tabs}${past}</div>
       <section class="card"><div class="card-title" style="margin-bottom:10px">오늘의 시황</div>
         <ul class="bpoints">${b.market.points.map(p => `<li>${esc(p)}</li>`).join("")}</ul></section>
       <section class="card"><div class="card-title" style="margin-bottom:6px">많이 움직인 ETF</div>
@@ -516,7 +530,7 @@ ${live.mode === "official" ? todayCard + hotCard : hotCard + todayCard}
       if (parts[0] === "hot") await hot();
       else if (parts[0] === "find") await find(params);
       else if (parts[0] === "my") await my();
-      else if (parts[0] === "brief") await brief();
+      else if (parts[0] === "brief") await brief(params);
       else if (parts[0] === "etf" && parts[1]) await detail(parts[1]);
       else await home();
     } catch (err) {

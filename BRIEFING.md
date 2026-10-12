@@ -14,7 +14,9 @@ API 키 없이 Claude Code 세션(또는 예약 실행)이 직접 뉴스를 찾�
 1. `cd pipeline && python -X utf8 live.py` 로 최신 데이터 생성 (daily 데이터가 없으면 `daily.py` 먼저)
 2. `python -X utf8 brief_targets.py 8` → 대상 ETF와 재료(JSON). 같은 이야기의 ETF는 한 항목으로 묶는다 (`codes`에 여러 개)
 3. 대상마다 뉴스 검색: 국내 종목은 한국어 기사, 미국 종목은 영문 기사. 당일 기사를 우선하고 날짜를 반드시 확인
-4. 아래 형식으로 `site/briefs/latest.json` 작성. 장 마감 종합이면 `site/briefs/YYYY-MM-DD.json`에도 같은 내용을 저장
+4. 아래 형식으로 `site/briefs/YYYY-MM-DD-{pre|mid|close}.json` 작성 (장 전 pre, 장중 mid, 장 마감 close)
+   - 같은 내용을 `site/briefs/latest.json`에도 저장
+   - `site/briefs/index.json`의 `briefs` 맨 앞에 `{id, date, session, generatedAt}` 추가 (같은 id가 있으면 교체)
 5. 커밋·푸시 → 다음 10분 주기 배포에 반영
 
 ## 작성 원칙
