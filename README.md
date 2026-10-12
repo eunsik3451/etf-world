@@ -1,5 +1,7 @@
 # ETF 월드 (서울 WM센터)
 
+> 처음 받으셨다면 **[HANDOVER.md](HANDOVER.md)** 부터 보세요. Claude Code 작업 안내는 [CLAUDE.md](CLAUDE.md), 브리핑 작성법은 [BRIEFING.md](BRIEFING.md), 자동 브리핑 설정은 [ops/routines.md](ops/routines.md).
+
 장 마감 후에도 국내 상장 ETF의 가치를 추정하는 실시간 iNAV 트래커. 종료된 ETFnow(etfnow.co.kr)를 참고한 개인·내부용 프로젝트.
 
 ## 구조
