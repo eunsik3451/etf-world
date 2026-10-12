@@ -222,11 +222,11 @@
     if (!state.rankTab) state.rankTab = live.mode === "live" ? "up" : "gainers";
     const today = (live.updated || "").slice(0, 10);
 
-    // 시장 폭: 금리·채권형 제외
+    // 시장 폭: 금리·채권형, 레버리지·인버스 제외
     let upN = 0, dnN = 0, flN = 0;
     for (const [c, e] of Object.entries(live.etfs)) {
       const u = U[c];
-      if (!u || u.tab === 6 || u.tags.includes("채권") || e.ch == null) continue;
+      if (!u || u.tab === 6 || u.tags.includes("채권") || u.f.includes("lev") || u.f.includes("inv") || e.ch == null) continue;
       if (e.ch > 0.05) upN++; else if (e.ch < -0.05) dnN++; else flN++;
     }
     const tot = upN + dnN + flN || 1;
@@ -278,7 +278,8 @@
         <div class="breadth" role="img" aria-label="상승 ${upN}개, 보합 ${flN}개, 하락 ${dnN}개">
           <span class="bu" style="width:${upP}%"></span><span class="bf" style="width:${100 - upP - dnP}%"></span><span class="bd" style="width:${dnP}%"></span>
         </div>
-        <div class="breadth-lbl"><span>상승 <b class="up">${fmt(upN)}</b></span><span>보합 ${fmt(flN)}</span><span>하락 <b class="down">${fmt(dnN)}</b></span></div>
+        <div class="breadth-lbl"><span>상승 ETF <b class="up">${fmt(upN)}</b>개</span><span>보합 ${fmt(flN)}개</span><span>하락 ETF <b class="down">${fmt(dnN)}</b>개</span></div>
+        <div class="card-sub" style="margin-top:2px">금리·채권형, 레버리지·인버스 제외</div>
         <div class="heat">${themes.map(t => `<a class="hc" href="#/find?tag=${encodeURIComponent(t.t)}" style="background:${heatBg(t.avg)}" title="${esc(t.t)} ${t.n}개 · 거래대금 ${amEok(t.am)}">
           <span class="ht">${esc(t.t)}</span><span class="hv">${pct(t.avg, 1)}</span></a>`).join("")}</div>
         <div class="card-sub" style="margin-top:10px">테마별 시가총액 가중 평균 · 많이 움직인 테마 순 · 색이 진할수록 큰 변동</div>
