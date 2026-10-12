@@ -1,11 +1,13 @@
 name: update
 
+# GitHub 예약 실행은 10분 간격이면 자주 밀리거나 빠진다.
+# 그래서 1시간마다 한 번 실행하고, ops/loop.py 가 그 안에서 10분 간격으로 6번 갱신·배포한다.
+# 배포는 gh-pages 브랜치로 한다 (Settings → Pages → Branch: gh-pages / root).
 on:
   schedule:
-    # 10분마다, 월 09:00 ~ 토 09:00 KST (UTC 월~금). GitHub 스케줄은 몇 분씩 밀릴 수 있다.
-    - cron: "*/10 * * * 1-5"
+    - cron: "5 * * * 1-5"      # 매시 05분, 월 09:05 ~ 토 08:05 KST
   push:
-    branches: [main]          # 브리핑·사이트 수정 시 바로 배포
+    branches: [main]           # 브리핑·사이트 수정 시 바로 1회 배포
   workflow_dispatch:
     inputs:
       daily:
@@ -14,21 +16,16 @@ on:
         default: false
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: update
-  cancel-in-progress: false
+  cancel-in-progress: true     # 새 실행이 오면 이전 반복은 정리
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
 
@@ -78,19 +75,8 @@ jobs:
             site/data/stocks.json
           key: daily-v2-${{ steps.kst.outputs.date }}
 
-      - name: 실시간 추정
-        working-directory: pipeline
-        run: python live.py
-
-      - name: 캐시 무효화 (배포마다 JS·CSS 주소에 버전 부여)
-        run: |
-          v="${GITHUB_SHA::7}"
-          sed -i "s#href=\"styles.css\"#href=\"styles.css?v=$v\"#; s#src=\"app.js\"#src=\"app.js?v=$v\"#" site/index.html
-          grep -n "?v=" site/index.html
-
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-      - id: deploy
-        uses: actions/deploy-pages@v4
+      - name: 실시간 추정 + 배포 (예약 실행이면 10분 간격 6회)
+        env:
+          LOOPS: ${{ github.event_name == 'schedule' && '6' || '1' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python ops/loop.py
