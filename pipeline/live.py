@@ -19,6 +19,7 @@ from common import KST, get_json, load, now_kst, num, pmap, save
 NAVER_LIST = ("https://finance.naver.com/api/sise/etfItemList.nhn"
               "?etfType=0&targetColumn=market_sum&sortOrder=desc")
 POLL_WORLD = "https://polling.finance.naver.com/api/realtime/worldstock/stock/"
+POLL_KR = "https://polling.finance.naver.com/api/realtime/domestic/stock/"
 EXCLUDE_FLAGS = {"lev", "inv", "synthetic", "futures"}
 MIN_US_WEIGHT = 30.0     # 미국 종목 비중이 이보다 작으면 추정하지 않음
 
@@ -200,10 +201,12 @@ def main():
         etfs[c] = row
 
     # ── 랭킹 ──
+    drivers = {}   # ETF → 오늘 등락을 이끈 구성종목 [[이름, 변동%], ...]
+
     def pack(c, **extra):
         u, e = universe.get(c, {}), etfs[c]
         return {"c": c, "n": u.get("n") or c, "p": e["p"], "ch": e["ch"], "am": e["am"],
-                "ex": e["ex"], "cf": e["cf"], "top": e.get("top"), **extra}
+                "ex": e["ex"], "cf": e["cf"], "top": e.get("top"), "dr": drivers.get(c), **extra}
 
     liquid = [c for c in est_rows if etfs[c]["mc"] >= 100]   # 시총 100억 이상
     up = sorted(liquid, key=lambda c: -etfs[c]["ex"])[:15]
@@ -223,6 +226,28 @@ def main():
         if a and e["am"] >= 1000 and e["v"] and not parking(c):   # 거래대금 10억 이상
             surge.append((c, e["v"] / a))
     surge.sort(key=lambda x: -x[1])
+
+    # ── 등락 이유: 순위에 오른 ETF의 구성종목별 기여도 (비중 × 등락률) ──
+    ranked = set(gainers + losers + amount + [c for c, _ in surge[:15]])
+    details = {c: (load(f"etf/{c}.json") or {}).get("holdings", []) for c in ranked}
+    kr_codes = sorted({h["k"] for hs in details.values() for h in hs[:15]
+                       if h.get("k") and h["t"] in ("KOSPI", "KOSDAQ")})
+    kr_chg = {}
+    for res in pmap(lambda ch: get_json(POLL_KR + ",".join(ch)).get("datas", []),
+                    [kr_codes[i:i + 100] for i in range(0, len(kr_codes), 100)], workers=4):
+        for d in res or []:
+            kr_chg[d["itemCode"]] = num(d.get("fluctuationsRatio"))
+    for c, hs in details.items():
+        contrib = []
+        for h in hs[:15]:
+            if h.get("k") in kr_chg and kr_chg[h["k"]] is not None:
+                contrib.append((h["n"], h["w"], kr_chg[h["k"]]))
+            elif h.get("r") in qv and qv[h["r"]][1]:
+                v = qv[h["r"]]
+                contrib.append((h["r"].split(".")[0], h["w"], (v[0] / v[1] - 1) * 100))
+        contrib.sort(key=lambda x: -abs(x[1] * x[2]))
+        if contrib:
+            drivers[c] = [[n, round(r, 1)] for n, w, r in contrib[:3]]
 
     themes = {}
     for c, e in etfs.items():

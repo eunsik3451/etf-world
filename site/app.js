@@ -150,15 +150,18 @@
   const RANK_TABS = [
     ["gainers", "상승"], ["losers", "하락"], ["amount", "거래대금"], ["surge", "거래량 급증"], ["up", "내일 HOT ↑"], ["down", "내일 HOT ↓"],
   ];
-  function rankRows(live, key) {
+  const drText = dr => (dr || []).map(([n, r]) => `${esc(n)} <span class="${cls(r)}">${pct(r, 1)}</span>`).join(" · ");
+  function rankRows(live, key, why = {}) {
     const list = (live.rank[key] || []).slice(0, 5);
     if (!list.length) return `<div class="empty">${key === "up" || key === "down" ? "아직 추정 순위가 없어요.<br>미국 프리마켓(17:00)부터 계산해요." : "데이터가 없어요."}</div>`;
     return list.map((e, i) => {
       let meta, side;
       if (key === "up" || key === "down") { meta = contribText(e.top); side = badgeSide(e.ex); }
       else if (key === "surge") { meta = `평소의 <b>${e.sr}배</b> · 거래대금 ${amEok(e.am)}`; side = badgeSide(e.ch); }
-      else if (key === "amount") { meta = `거래대금 <b>${amEok(e.am)}</b> · ${fmt(e.p)}원`; side = badgeSide(e.ch); }
-      else { meta = `${fmt(e.p)}원 · 거래대금 ${amEok(e.am)}`; side = badgeSide(e.ch); }
+      else if (key === "amount") { meta = `거래대금 <b>${amEok(e.am)}</b>`; side = badgeSide(e.ch); }
+      else { meta = `거래대금 ${amEok(e.am)}`; side = badgeSide(e.ch); }
+      if (e.dr?.length && key !== "up" && key !== "down") meta += `<div class="why-dr">${drText(e.dr)}</div>`;
+      if (why[e.c]) meta += `<div class="why-news"><span>뉴스</span>${esc(why[e.c])}</div>`;
       return etfRow(e, { idx: i + 1, meta, side, plain: true });
     }).join("");
   }
@@ -195,6 +198,9 @@
       : upP > 60 ? `ETF ${fmt(tot)}개 중 ${Math.round(upP)}%가 오르고 있어요`
       : "오르는 ETF와 내리는 ETF가 엇갈리고 있어요";
     const themes = r.themes.filter(t => t.t !== "채권").slice(0, 9);
+    const why = {};                                  // 오늘 브리핑의 ETF별 한 줄 요약
+    if (briefToday) for (const it of b.items) for (const c of it.codes) why[c] = it.summary;
+    state.why = why;
 
     const ticker = live.indices.map(i => `<div class="tk"><span class="n">${esc(i.n)}</span>
       <span class="v">${fmt(i.v, i.fx ? 1 : 2)}</span><span class="c ${cls(i.c)}">${pct(i.c)}</span></div>`).join("");
@@ -244,7 +250,7 @@
           <a class="more" id="rankMore" href="${state.rankTab === "up" || state.rankTab === "down" ? "#/hot" : "#/find"}">더 보기</a></div>
         <div class="chips mini" role="tablist">${RANK_TABS.map(([k, l]) =>
           `<button class="chip ${k === state.rankTab ? "on" : ""}" data-rank="${k}">${l}</button>`).join("")}</div>
-        <div class="list" id="rankList">${rankRows(live, state.rankTab)}</div>
+        <div class="list" id="rankList">${rankRows(live, state.rankTab, why)}</div>
         <p class="note" id="rankNote">${rankNote(live, state.rankTab)}</p>
       </section>
 
@@ -611,7 +617,7 @@
       state.rankTab = t.dataset.rank;
       t.parentElement.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === t));
       base().then(({ live }) => {
-        document.getElementById("rankList").innerHTML = rankRows(live, state.rankTab);
+        document.getElementById("rankList").innerHTML = rankRows(live, state.rankTab, state.why || {});
         document.getElementById("rankNote").innerHTML = rankNote(live, state.rankTab);
         document.getElementById("rankMore").setAttribute("href", state.rankTab === "up" || state.rankTab === "down" ? "#/hot" : "#/find");
       });
