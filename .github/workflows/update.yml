@@ -82,6 +82,12 @@ jobs:
         working-directory: pipeline
         run: python live.py
 
+      - name: 캐시 무효화 (배포마다 JS·CSS 주소에 버전 부여)
+        run: |
+          v="${GITHUB_SHA::7}"
+          sed -i "s#href=\"styles.css\"#href=\"styles.css?v=$v\"#; s#src=\"app.js\"#src=\"app.js?v=$v\"#" site/index.html
+          grep -n "?v=" site/index.html
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
