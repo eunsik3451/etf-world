@@ -1,0 +1,90 @@
+name: update
+
+on:
+  schedule:
+    # 10분마다, 월 09:00 ~ 토 09:00 KST (UTC 월~금). GitHub 스케줄은 몇 분씩 밀릴 수 있다.
+    - cron: "*/10 * * * 1-5"
+  push:
+    branches: [main]          # 브리핑·사이트 수정 시 바로 배포
+  workflow_dispatch:
+    inputs:
+      daily:
+        description: "구성종목·차트 전체 재수집"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: KST 날짜
+        id: kst
+        run: |
+          echo "date=$(TZ=Asia/Seoul date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          echo "hour=$(TZ=Asia/Seoul date +%-H)" >> "$GITHUB_OUTPUT"
+
+      # 하루 1번 수집한 데이터(구성종목·차트, ~20MB)는 Actions 캐시에 보관
+      - name: 일간 데이터 복원
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            site/data/etf
+            site/data/universe.json
+            site/data/holdings.json
+            site/data/stocks.json
+          key: daily-${{ steps.kst.outputs.date }}
+          restore-keys: daily-
+
+      - name: 직전 live.json 가져오기 (마지막 추정 순위 유지용)
+        continue-on-error: true
+        run: |
+          curl -sf "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data/live.json" -o site/data/live.json || true
+
+      - name: 일간 수집 (매일 07시 이후 첫 실행)
+        id: daily
+        if: inputs.daily || steps.cache.outputs.cache-hit != 'true' && (steps.kst.outputs.hour >= 7 || steps.cache.outputs.cache-matched-key == '')
+        working-directory: pipeline
+        run: python daily.py
+
+      - name: 일간 데이터 저장
+        if: steps.daily.outcome == 'success'
+        continue-on-error: true   # 같은 날 수동 재수집 시 키 중복은 무시
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            site/data/etf
+            site/data/universe.json
+            site/data/holdings.json
+            site/data/stocks.json
+          key: daily-${{ steps.kst.outputs.date }}
+
+      - name: 실시간 추정
+        working-directory: pipeline
+        run: python live.py
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
