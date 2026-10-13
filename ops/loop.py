@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SITE = os.path.join(ROOT, "site")
@@ -45,9 +46,18 @@ def publish():
     run(["git", "commit", "-q", "-m", f"deploy {time.strftime('%Y-%m-%d %H:%M:%S')}"], cwd=OUT)
     for i in range(3):                                      # 일시적 네트워크 오류 재시도
         if run(["git", "push", "-q", "-f", url, "gh-pages"], cwd=OUT, check=False).returncode == 0:
-            return
+            break
         time.sleep(10)
-    raise RuntimeError("gh-pages push 실패")
+    else:
+        raise RuntimeError("gh-pages push 실패")
+    # Actions 토큰으로 한 푸시는 Pages 빌드를 자동으로 띄우지 않을 수 있어 직접 요청
+    try:
+        req = urllib.request.Request(f"https://api.github.com/repos/{repo}/pages/builds", method="POST",
+                                     headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            print("Pages 빌드 요청:", r.status, flush=True)
+    except Exception as e:  # noqa: BLE001
+        print("Pages 빌드 요청 실패:", e, flush=True)
 
 
 def main():
