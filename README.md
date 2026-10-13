@@ -8,7 +8,7 @@
 - `pipeline/daily.py`: 하루 1번 실행. ETF 1,172개의 구성종목·기본정보·1년 차트, 종목→ETF 역검색 인덱스 (약 2분)
 - `pipeline/live.py`: 10분마다 실행. ETF 시세 + 미국 구성종목 시세(프리/정규/애프터) + 환율 → 추정 iNAV, 랭킹 (약 5초)
 - `site/`: 빌드 없는 정적 SPA. `site/data/*.json`을 읽음
-- `.github/workflows/update.yml`: 10분 주기 실행 후 GitHub Pages 배포. 일간 데이터는 Actions 캐시에 보관
+- `.github/workflows/update.yml` + `ops/loop.py`: 매시 실행, 그 안에서 10분 간격 갱신 후 gh-pages 브랜치로 배포. 일간 데이터는 Actions 캐시에 보관
 
 ## 추정 iNAV
 ```

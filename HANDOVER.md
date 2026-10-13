@@ -61,8 +61,9 @@ GitHub 저장소 이름은 etf-world, 공개 저장소로 만들어줘.
 2. `cd pipeline && python -X utf8 daily.py` → `python -X utf8 live.py` 로 데이터 생성 확인 (네이버 접속 가능 여부)
 3. `cd site && python -m http.server 8765` 로 로컬 확인, 헤드리스 크롬 스크린샷으로 홈·상세 화면 점검
 4. `git init -b main` → 커밋 → `gh repo create etf-world --public --source . --push`
-5. Pages 켜기: `gh api -X POST repos/<계정>/etf-world/pages -f build_type=workflow`
-6. Actions 첫 실행 성공 확인(`gh run list`), `https://<계정>.github.io/etf-world/` 접속 확인
+5. 첫 Actions 실행이 끝나 `gh-pages` 브랜치가 생길 때까지 기다림(`gh run list`, `gh api repos/<계정>/etf-world/branches`)
+6. Pages 켜기(브랜치 방식): `gh api -X POST repos/<계정>/etf-world/pages -f build_type=legacy -f "source[branch]=gh-pages" -f "source[path]=/"` → `gh api -X POST repos/<계정>/etf-world/pages/builds` → 1~2분 뒤 `https://<계정>.github.io/etf-world/` 접속 확인
+   - 첫 실행의 Pages 빌드 요청은 Pages를 켜기 전이라 실패해도 정상. 다음 실행부터 자동
 7. 사용자에게 `/web-setup` 실행 요청(Claude 계정 ↔ GitHub 연결) → `ops/routines.md` 대로 예약 실행 2개 생성 → Run now로 시험 실행
 8. 끝나면 사이트 주소, 예약 실행 링크, 남은 할 일을 정리해 보고
 
@@ -86,7 +87,7 @@ GitHub 저장소 이름은 etf-world, 공개 저장소로 만들어줘.
 ## 자동으로 돌아가는 것
 | 무엇 | 언제 | 어디서 |
 |---|---|---|
-| 시세·순위·추정 iNAV 갱신 | 평일 10분마다 (월 09:00 ~ 토 09:00) | GitHub Actions |
+| 시세·순위·추정 iNAV 갱신 | 평일 1시간마다 실행, 그 안에서 10분 간격 (월 09:05 ~ 토 08:55) | GitHub Actions |
 | 구성종목·차트 재수집 | 매일 07시 이후 첫 실행 | GitHub Actions |
 | 장 전 브리핑 | 평일 08:00 | Claude 예약 실행 |
 | 장 마감 브리핑 + 요즘 트렌드 | 평일 15:40 (휴장일은 건너뜀) | Claude 예약 실행 |

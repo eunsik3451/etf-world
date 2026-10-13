@@ -14,7 +14,8 @@ site/                빌드 없는 정적 SPA (index.html, app.js, styles.css)
   data/              파이프라인 출력. git에 올리지 않음(.gitignore). Actions가 매번 생성
   briefs/            Claude가 쓰는 브리핑 JSON. git에 올림
     latest.json, index.json, YYYY-MM-DD-{pre|mid|close}.json, trends.json
-.github/workflows/update.yml   평일 10분 주기 + push 시 실행 → GitHub Pages 배포
+.github/workflows/update.yml   매시 05분 예약 실행 + push 시 실행
+ops/loop.py          Actions 안에서 live.py를 10분 간격으로 돌리고 gh-pages 브랜치로 배포 (예약 실행이면 6회, 그 외 1회)
 ops/routines.md      장 전·장 마감 자동 브리핑(Claude 예약 실행) 설정 원본
 ```
 
@@ -57,7 +58,9 @@ git push origin main                          # 푸시하면 Actions가 바로 �
 - 테마 히트맵: 시총가중 평균 등락률, 변동폭 큰 순
 
 ## 배포·운영 메모
-- GitHub Pages(Actions 배포). 일간 데이터는 Actions 캐시(`daily-v2-날짜`)에 보관. 데이터 필드를 바꾸면 캐시 키 버전을 올려 당일 재수집
+- GitHub 예약 실행은 10분 간격이면 자주 빠진다(실측: 하루 2회). 그래서 1시간마다 실행하고 `ops/loop.py`가 그 안에서 10분 간격으로 6번 갱신한다
+- 배포: `gh-pages` 브랜치에 강제 푸시(커밋 1개만 유지) → Pages API로 빌드 요청. Pages 설정은 Branch: gh-pages / root (build_type=legacy)
+- 일간 데이터는 Actions 캐시(`daily-v2-날짜`)에 보관. 데이터 필드를 바꾸면 캐시 키 버전을 올려 당일 재수집
 - 배포 때 `app.js?v=커밋` 식으로 버전을 붙여 브라우저 캐시 문제를 막는다 (Pages 캐시 10분)
 - 검색엔진 차단(robots.txt, noindex). URL을 아는 사람은 볼 수 있음
 - 공개 저장소 전제(Actions 무료 분 무제한). 비공개로 바꾸면 월 2,000분을 넘고 Pages도 유료
